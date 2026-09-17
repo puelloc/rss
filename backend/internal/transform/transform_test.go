@@ -2,6 +2,7 @@ package transform
 
 import (
 	"testing"
+	"time"
 
 	"github.com/mmcdole/gofeed"
 
@@ -106,6 +107,138 @@ func TestRenderLink(t *testing.T) {
 			t.Errorf("got %q, want empty", got)
 		}
 	})
+}
+
+func applyNow() time.Time { return time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC) }
+
+func dt(m time.Month, day int) *time.Time {
+	t := time.Date(2026, m, day, 12, 0, 0, 0, time.UTC)
+	return &t
+}
+
+func TestApply(t *testing.T) {
+	feed := model.Feed{Name: "pod", Rules: model.Rules{
+		Include:    model.FilterGroup{Mode: "any", Rules: []model.FilterRule{{Field: "title", Op: "contains", Value: "tech"}}},
+		Transforms: []model.TransformRule{{Target: "link", Op: "replace", Find: "http://", Replace: "https://"}},
+		MaxItems:   2,
+		SortDesc:   true,
+	}}
+	src := &gofeed.Feed{Title: "src", Items: []*gofeed.Item{
+		{Title: "Tech talk", Link: "http://a.example/1", PublishedParsed: dt(1, 2)},
+		{Title: "Sports news", Link: "http://a.example/2"},
+		{Title: "More tech", Link: "http://a.example/3", PublishedParsed: dt(1, 3)},
+		{Title: "tech roundup", Link: "http://a.example/4", PublishedParsed: dt(1, 1)},
+	}}
+
+	out := Apply(&feed, src, "http://feed.example/rss", applyNow())
+
+	if out.Title != "pod" {
+		t.Errorf("title = %q, want pod", out.Title)
+	}
+	if out.Link != "http://feed.example/rss" {
+		t.Errorf("link = %q", out.Link)
+	}
+	if out.SourceCount != 4 {
+		t.Errorf("source_count = %d, want 4", out.SourceCount)
+	}
+	if out.Matched != 3 {
+		t.Errorf("matched = %d, want 3 (Sports news filtered out)", out.Matched)
+	}
+	if len(out.Items) != 2 {
+		t.Fatalf("got %d items, want 2 (max_items)", len(out.Items))
+	}
+	if out.Items[0].Title != "More tech" {
+		t.Errorf("first item = %q, want Most tech (newest of matches)", out.Items[0].Title)
+	}
+	if out.Items[0].Link != "https://a.example/3" {
+		t.Errorf("first link = %q, want https://a.example/3", out.Items[0].Link)
+	}
+}
+
+func TestApplyMaxAge(t *testing.T) {
+	feed := model.Feed{Rules: model.Rules{MaxAgeDays: 1, SortDesc: true}}
+	src := &gofeed.Feed{Items: []*gofeed.Item{
+		{Title: "recent", PublishedParsed: dt(1, 9)},
+		{Title: "old", PublishedParsed: dt(1, 1)},
+		{Title: "no date"},                               // no date: must survive max_age filter
+		{Title: "updated date", UpdatedParsed: dt(1, 9)}, // UpdatedParsed fallback
+	}}
+
+	out := Apply(&feed, src, "", applyNow())
+	got := map[string]bool{}
+	for _, it := range out.Items {
+		got[it.Title] = true
+	}
+
+	if !got["recent"] || !got["no date"] || !got["updated date"] {
+		t.Errorf("unexpected survivors: %v (want recent, no date, updated date)", got)
+	}
+	if got["old"] {
+		t.Errorf("old item kept despite max_age_days=1: %v", got)
+	}
+
+	// dated items first (newest first), undated last
+	if out.Items[0].Title != "recent" {
+		t.Errorf("first = %q, want recent", out.Items[0].Title)
+	}
+	if out.Items[len(out.Items)-1].Title != "no date" && out.Items[len(out.Items)-1].Title != "updated date" {
+		t.Errorf("last should be an undated item, got %q", out.Items[len(out.Items)-1].Title)
+	}
+}
+
+func TestApplyTransforms(t *testing.T) {
+	feed := model.Feed{Rules: model.Rules{Transforms: []model.TransformRule{
+		{Target: "title", Op: "upper"},
+		{Target: "link", Op: "regex_replace", Find: `http://[^/]+`, Replace: "https://cdn"},
+		{Target: "content", Op: "strip_html"},
+	}}}
+	src := &gofeed.Feed{Items: []*gofeed.Item{{
+		Title: "lowercase", Description: "<p>hi</p>", Link: "http://old.example/x",
+		Content: "<div>hello <b>world</b></div>",
+	}}}
+
+	out := Apply(&feed, src, "", applyNow())
+	it := out.Items[0]
+	if it.Title != "LOWERCASE" {
+		t.Errorf("title = %q, want LOWERCASE", it.Title)
+	}
+	if it.Description != "<p>hi</p>" {
+		t.Errorf("untouched description altered: %q", it.Description)
+	}
+	if it.Link != "https://cdn/x" {
+		t.Errorf("link = %q, want https://cdn/x", it.Link)
+	}
+	if it.Content != "hello world" {
+		t.Errorf("content = %q, want \"hello world\"", it.Content)
+	}
+}
+
+func TestApplyDoesNotMutateSource(t *testing.T) {
+	feed := model.Feed{Rules: model.Rules{Transforms: []model.TransformRule{{Target: "title", Op: "upper"}}}}
+	src := &gofeed.Feed{Items: []*gofeed.Item{{Title: "before"}}}
+	Apply(&feed, src, "", applyNow())
+	if src.Items[0].Title != "before" {
+		t.Errorf("source item mutated: %q", src.Items[0].Title)
+	}
+}
+
+func TestApplyGUIDFallback(t *testing.T) {
+	feed := model.Feed{}
+	src := &gofeed.Feed{Items: []*gofeed.Item{
+		{Title: "no guid", Link: "http://x.example/1", PublishedParsed: dt(1, 1)},
+		{Title: "with guid", Link: "http://x.example/2", GUID: "custom-id"},
+	}}
+
+	out := Apply(&feed, src, "http://feed.example/rss", applyNow())
+	if out.Items[0].GUID != "http://x.example/1" {
+		t.Errorf("guid = %q, want link fallback", out.Items[0].GUID)
+	}
+	if out.Items[1].GUID != "custom-id" {
+		t.Errorf("guid = %q, want custom-id", out.Items[1].GUID)
+	}
+	if out.Items[0].Link != "http://x.example/1" {
+		t.Errorf("link = %q, want unchanged (empty template)", out.Items[0].Link)
+	}
 }
 
 func TestMatchRuleOps(t *testing.T) {
