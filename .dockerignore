@@ -1,0 +1,8 @@
+.git
+data
+backend/feedforge
+backend/*.log
+web/node_modules
+web/dist
+*.log
+.DS_Store
