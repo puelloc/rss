@@ -12,6 +12,36 @@ func item(title, desc string) *gofeed.Item {
 	return &gofeed.Item{Title: title, Description: desc, Link: "https://x.test/1"}
 }
 
+func TestTransformString(t *testing.T) {
+	rule := func(op, find, replace string) model.TransformRule {
+		return model.TransformRule{Op: op, Find: find, Replace: replace}
+	}
+	cases := []struct {
+		name string
+		s    string
+		r    model.TransformRule
+		want string
+	}{
+		{"replace all", "aa-bb-cc", rule("replace", "b", "B"), "aa-BB-cc"},
+		{"regex replace", "order 12345", rule("regex_replace", `\d+`, "#42"), "order #42"},
+		{"regex invalid unchanged", "abc", rule("regex_replace", "(", "x"), "abc"},
+		{"prefix", "World", rule("prefix", "Hello ", ""), "Hello World"},
+		{"suffix", "Hello", rule("suffix", "!", ""), "Hello!"},
+		{"strip html", " <b>Bold</b> and <i>italic</i> ", rule("strip_html", "", ""), "Bold and italic"},
+		{"trim", "  x  ", rule("trim", "", ""), "x"},
+		{"lower", "ABC", rule("lower", "", ""), "abc"},
+		{"upper", "abc", rule("upper", "", ""), "ABC"},
+		{"unknown op unchanged", "abc", rule("nope", "", ""), "abc"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := transformString(tc.s, tc.r); got != tc.want {
+				t.Errorf("transformString(%q, %q) = %q, want %q", tc.s, tc.r.Op, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestMatchRuleOps(t *testing.T) {
 	val := "The Quick Brown Fox"
 	rule := func(op, value string, cs bool) model.FilterRule {
