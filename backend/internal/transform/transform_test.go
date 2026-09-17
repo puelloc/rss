@@ -42,6 +42,72 @@ func TestTransformString(t *testing.T) {
 	}
 }
 
+func TestSlugify(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Hello, World!", "hello-world"},
+		{"  --Leading and trailing--  ", "leading-and-trailing"},
+		{"a--b  c", "a-b-c"},
+		{"", ""},
+		{"already-slug 2024", "already-slug-2024"},
+	}
+	for _, tc := range cases {
+		if got := slugify(tc.in); got != tc.want {
+			t.Errorf("slugify(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestEpisodeNumber(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"S03E12 The Big One", "12"},
+		{"Episode 47: Chaos", "47"},
+		{"Ep8 bonus", "8"},
+		{"- 12 special v2", "12"},
+		{"No number here", ""},
+	}
+	for _, tc := range cases {
+		if got := episodeNumber(tc.in); got != tc.want {
+			t.Errorf("episodeNumber(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestRenderLink(t *testing.T) {
+	it := &gofeed.Item{
+		Title:   "Episode 42: Hello, World!",
+		Link:    "https://orig.test/x",
+		Content: "body",
+	}
+
+	t.Run("empty template keeps original link", func(t *testing.T) {
+		got, err := renderLink("  ", it)
+		if err != nil || got != "https://orig.test/x" {
+			t.Errorf("got %q, %v", got, err)
+		}
+	})
+
+	t.Run("template funcs", func(t *testing.T) {
+		got, err := renderLink("https://x.test/{{ .Episode }}-{{ slug .Title }}", it)
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		want := "https://x.test/42-episode-42-hello-world"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("bad template returns error and empty link", func(t *testing.T) {
+		got, err := renderLink("{{ .Nope", it)
+		if err == nil {
+			t.Fatal("want error for bad template")
+		}
+		if got != "" {
+			t.Errorf("got %q, want empty", got)
+		}
+	})
+}
+
 func TestMatchRuleOps(t *testing.T) {
 	val := "The Quick Brown Fox"
 	rule := func(op, value string, cs bool) model.FilterRule {
