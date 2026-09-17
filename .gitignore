@@ -1,0 +1,14 @@
+# binaries
+backend/feedforge
+*.exe
+
+# node
+node_modules/
+web/node_modules/
+
+# build output (dist is committed per repo policy once verified? -> keep ignored for now)
+web/dist/
+
+# misc
+*.log
+.DS_Store
