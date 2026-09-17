@@ -38,6 +38,10 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
 func (s *Store) migrate() error {
 	_, err := s.db.Exec(`
 	CREATE TABLE IF NOT EXISTS feeds (
