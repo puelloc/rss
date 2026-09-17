@@ -85,4 +85,41 @@ func TestCRUD(t *testing.T) {
 	if _, err := s.Get(f.ID); err != ErrNotFound {
 		t.Errorf("get after delete: want ErrNotFound, got %v", err)
 	}
+	if err := s.Delete(f.ID); err != ErrNotFound {
+		t.Errorf("delete missing: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestNotFound(t *testing.T) {
+	s := openTestStore(t)
+	if _, err := s.Get("nope"); err != ErrNotFound {
+		t.Errorf("get missing: want ErrNotFound, got %v", err)
+	}
+	if err := s.Update("nope", &model.Feed{Name: "x"}); err != ErrNotFound {
+		t.Errorf("update missing: want ErrNotFound, got %v", err)
+	}
+	if err := s.Delete("nope"); err != ErrNotFound {
+		t.Errorf("delete missing: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestListOrder(t *testing.T) {
+	s := openTestStore(t)
+	for _, name := range []string{"bravo", "alpha", "charlie"} {
+		if err := s.Create(&model.Feed{Name: name, SourceURL: "https://example.com"}); err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+	}
+	list, err := s.List()
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 3 {
+		t.Fatalf("want 3 feeds, got %d", len(list))
+	}
+	for i, want := range []string{"alpha", "bravo", "charlie"} {
+		if list[i].Name != want {
+			t.Errorf("list[%d] = %q, want %q", i, list[i].Name, want)
+		}
+	}
 }
