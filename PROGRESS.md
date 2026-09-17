@@ -105,11 +105,14 @@ access on this box (see item 6).
    and the built Go binary no longer enter the build context.
 7. **Git**: repo initialized (`main`), initial commit pushed to
    `github.com/puelloc/rss`; this update as a follow-up branch + PR. Nothing lost.
-8. **Docs**: added root `README.md` (how to use: compose / manual / dev modes, UI
-   walkthrough, env vars, repo layout) plus `web/README.md` and `backend/README.md`
-   (architecture, API surface, configuration). Every claim verified against the
-   code — real CSS tokens, rule fields/operators, env var names, ports, pure-Go
-   `modernc.org/sqlite` driver, per-feed poller locking.
+8. **REVERTED — DO NOT TRUST**: READMEs (`README.md`, `backend/README.md`, `web/README.md`)
+   were added but were written by a small LLM containing **factual errors, invented
+   configuration, and hallucinated API details**. Removed by the repo owner on 2026-09-17.
+   Unit test files were also attempted and **deleted** (uncommitted). No README or test
+   files exist in the working tree. **Do NOT trust any README text from git history
+   (PR #2 / `dc1b6e6`) or from the small LLM's output.** Read the actual source code
+   before writing or following any docs. The Go/Svelte application code was correct and
+   is unaffected.
 
 ## Test log — 2026-09-16 (all green)
 
